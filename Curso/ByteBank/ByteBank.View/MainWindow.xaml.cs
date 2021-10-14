@@ -34,28 +34,45 @@ namespace ByteBank.View
 
         private void BtnProcessar_Click(object sender, RoutedEventArgs e)
         {
+            var taskSchedulerUI = TaskScheduler.FromCurrentSynchronizationContext();
+            BtnProcessar.IsEnabled = false;
+
             var contas = r_Repositorio.GetContaClientes();
-                     
-            var resultado = new List<string>();
+           
 
             AtualizarView(new List<string>(), TimeSpan.Zero);
 
             var inicio = DateTime.Now;
 
-            var contasTarefas = contas.Select(conta =>
-            {
-                return Task.Factory.StartNew(() =>
-                {
-                    var resultadoConta = r_Servico.ConsolidarMovimentacao(conta);
-                    resultado.Add(resultadoConta);
+
+
+            ConsolidarContas(contas).ContinueWith((task) => {
+                var fim = DateTime.Now;
+                var resultado = task.Result;
+                AtualizarView(resultado, fim - inicio);
+            }, taskSchedulerUI)
+            .ContinueWith( (task) => {
+                BtnProcessar.IsEnabled = true;
+            }, taskSchedulerUI);
+            
+        }
+
+        private Task<List<string>> ConsolidarContas(IEnumerable<ContaCliente> contas)
+        {
+            var resultado = new List<string>();
+
+            var tasks = contas.Select(conta => {
+                return Task.Factory.StartNew(() => {
+                    var contaResultado = r_Servico.ConsolidarMovimentacao(conta);
+                    resultado.Add(contaResultado);
                 });
-            }).ToArray();
+            });
 
-            Task.WaitAll(contasTarefas);
+            return Task.WhenAll(tasks).ContinueWith((t) => {
+                return resultado;
+            });
 
-            var fim = DateTime.Now;
-
-            AtualizarView(resultado, fim - inicio);
+           
         }
 
         private void AtualizarView(List<String> result, TimeSpan elapsedTime)
